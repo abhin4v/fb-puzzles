@@ -1,0 +1,45 @@
+#!/usr/bin/python
+
+import sys
+from collections import defaultdict
+from itertools import imap
+
+graph = defaultdict(set)
+
+input_file = open(sys.argv[1])
+no_of_veterans = input_file.readline().strip()
+
+for i in xrange(int(no_of_veterans)):
+    (veteran, no_of_liars) = input_file.readline().strip().split()
+    for j in xrange(int(no_of_liars)):
+        liar = input_file.readline().strip()
+        graph[veteran].add(liar)
+        graph[liar].add(veteran)
+
+input_file.close()
+
+def visit_node(node, mode, partition, seen_nodes):
+    #print "!%s" % node
+    if not node in seen_nodes:
+        partition[node] = mode
+        #print ">%s:%s" %  (node, mode)
+        seen_nodes.add(node)
+        for child_node in graph[node]:
+            visit_node(child_node, not mode, partition, seen_nodes)
+
+seen_nodes = set()
+partition = dict()
+for veteran in graph.keys():
+    #print  "^%s" % veteran
+    if veteran not in seen_nodes:
+        visit_node(veteran, True, partition, seen_nodes)
+
+def quantify(iterable, pred=bool):
+    "Count how many times the predicate is true"
+    return sum(imap(pred, iterable))
+
+#print graph
+#print partition
+truthers = quantify(partition.iteritems(), lambda (k,v):v)
+liars = len(partition) - truthers
+print "%s %s" % (max(truthers, liars), min(truthers, liars))

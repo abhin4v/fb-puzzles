@@ -1,0 +1,143 @@
+#!/usr/bin/python
+
+import sys
+import re
+from collections import deque
+from collections import defaultdict
+from levenshtein import levenshtein
+
+alphabet = "etaoinshrdlcumwfgypbvkjxqz"
+
+def read_post(post_file_path):
+    with open(post_file_path) as input_file:
+        return input_file.read().strip()
+
+def read_dictionary(dictionary_file_path):
+    with open(dictionary_file_path) as dictionary_file:
+        dictionary = set()
+        for line in dictionary_file:
+            dictionary.add(line.strip().lower())
+        return dictionary
+
+def bucket_dictionary(dictionary):
+    buckets = defaultdict(set)
+    for word in dictionary:
+        buckets[word[0]].add(word)
+    return buckets
+
+def words(text):
+    return re.findall("[a-z]+", text.lower())
+
+def splits(word):
+    return [(word[:i], word[i:]) for i in xrange(len(word) + 1)]
+
+def deletes(word_splits):
+    for a, b in word_splits:
+        if b:
+            yield a + b[1:]
+
+def replaces(word_splits):
+    for a, b in word_splits:
+        if b:
+            for c in alphabet:
+                yield a + c + b[1:]
+
+def inserts(word_splits):
+    for a, b in word_splits:
+        for c in alphabet:
+            yield a + c + b
+
+def edits(word):
+    word_splits = splits(word)
+    for w in deletes(word_splits):
+        yield w
+    for w in replaces(word_splits):
+        yield w
+    for w in inserts(word_splits):
+        yield w
+
+def align_dictionary(word, dictionary, buckets):
+    for w in buckets[word[0]]:
+        yield w
+    for (c, ws) in buckets.iteritems():
+        if c == word[0]:
+            continue
+        else:
+            for w in ws:
+                yield w
+
+def find_edit_distance(word, dictionary, buckets):
+    if word in dictionary:
+        return (word, 0)
+
+    #print word
+
+    #print "mutation"
+    mutation_limit = 1
+    queue = deque()
+    queue.appendleft((word, 0))
+
+    words_checked = 0
+    current_ed = 0
+    try:
+        while len(queue) != 0:
+            (w, edit_distance) = queue.pop()
+            for e in edits(w):
+                words_checked += 1
+                if (edit_distance + 1) > mutation_limit:
+                    current_ed = edit_distance + 1
+                    raise StopIteration
+                if e in dictionary:
+                    print "M: %s -> %s: %s" % (word, e, edit_distance + 1)
+                    #print "Words checked = %s" % words_checked
+                    return (e, edit_distance + 1)
+                else:
+                    #print "%s. %s: %s" % (i, e, edit_distance + 1)
+                    queue.appendleft((e, edit_distance + 1))
+    except StopIteration:
+        pass
+    #print "Words checked = %s" % words_checked
+
+    #print "SEARCH %s" % word
+    words_checked = 0
+    current_min = 1e38
+    nearest_word = None
+    for entry in align_dictionary(word, dictionary, buckets):
+        if abs(len(entry) - len(word)) > current_min:
+            continue
+
+        words_checked += 1
+        d = levenshtein(word, entry)
+        # print "%s: %s" % (entry, d)
+
+        if d < current_min:
+            current_min = d
+            nearest_word = entry
+        if current_min == current_ed:
+            #print ">> breaking"
+            break
+
+        #print "current_min = %s" % current_min
+    #print "Words checked = %s" % words_checked
+
+    print "S: %s -> %s: %s" % (word, nearest_word, current_min)
+    return (nearest_word, current_min)
+
+def score_post(post, dictionary, buckets):
+    #print post
+    corrections = {}
+    score = 0
+    for word in words(post):
+        if word in corrections:
+            #print "Found in corrections: %s" % word
+            (correct_word, edit_distance) = corrections[word]
+        else:
+            (correct_word, edit_distance) = find_edit_distance(word, dictionary, buckets)
+            corrections[word] = (correct_word, edit_distance)
+        score += edit_distance
+    return score
+
+if __name__ == "__main__":
+    dictionary_file_path = "/var/tmp/twl06.txt"
+    dictionary = read_dictionary(dictionary_file_path)
+    print score_post(read_post(sys.argv[1]), dictionary, bucket_dictionary(dictionary))
